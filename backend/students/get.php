@@ -3,11 +3,11 @@
 require_once '../config.php';
 
 validateRequestMethod('GET');
-requireAuth(['super_admin', 'admin']);
+requireAuth(['super_admin', 'admin', 'assistant']);
 
-$adminId = isset($_GET['id']) ? (int)$_GET['id'] : null;
+$studentId = isset($_GET['id']) ? (int)$_GET['id'] : null;
 $status = isset($_GET['status']) ? $_GET['status'] : null;
-$role = isset($_GET['role']) ? $_GET['role'] : null;
+$gradeId = isset($_GET['grade_id']) ? intval($_GET['grade_id']) : null;
 $search = isset($_GET['search']) ? trim($_GET['search']) : null;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
@@ -15,33 +15,19 @@ $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 if ($limit > 100) $limit = 100;
 $offset = ($page - 1) * $limit;
 
-if ($status) {
-    $allowedStatuses = ['active', 'inactive'];
-    if (!in_array($status, $allowedStatuses)) {
-        respond('error', 'Invalid status. Allowed: ' . implode(', ', $allowedStatuses));
-    }
-}
-
-if ($role) {
-    $allowedRoles = ['super_admin', 'admin', 'assistant'];
-    if (!in_array($role, $allowedRoles)) {
-        respond('error', 'Invalid role. Allowed: ' . implode(', ', $allowedRoles));
-    }
-}
-
-if ($adminId) {
-    $stmt = $conn->prepare("SELECT id, name, email, role, status, created_at FROM admins WHERE id = ?");
-    $stmt->bind_param("i", $adminId);
+if ($studentId) {
+    $stmt = $conn->prepare("SELECT id, full_name, phone, email, grade_id, school_name, wallet_balance, status, created_at FROM students WHERE id = ?");
+    $stmt->bind_param("i", $studentId);
     $stmt->execute();
     $result = $stmt->get_result();
     $stmt->close();
 
     if ($result->num_rows === 0) {
-        respond('error', 'Admin not found');
+        respond('error', 'Student not found');
     }
 
-    $admin = $result->fetch_assoc();
-    respond('success', $admin);
+    $student = $result->fetch_assoc();
+    respond('success', $student);
 }
 
 $conditions = [];
@@ -54,23 +40,24 @@ if ($status) {
     $types .= 's';
 }
 
-if ($role) {
-    $conditions[] = "role = ?";
-    $params[] = $role;
-    $types .= 's';
+if ($gradeId) {
+    $conditions[] = "grade_id = ?";
+    $params[] = $gradeId;
+    $types .= 'i';
 }
 
 if ($search) {
-    $conditions[] = "(name LIKE ? OR email LIKE ?)";
+    $conditions[] = "(full_name LIKE ? OR phone LIKE ? OR email LIKE ?)";
     $searchParam = "%$search%";
     $params[] = $searchParam;
     $params[] = $searchParam;
-    $types .= 'ss';
+    $params[] = $searchParam;
+    $types .= 'sss';
 }
 
 $whereClause = !empty($conditions) ? "WHERE " . implode(" AND ", $conditions) : "";
 
-$countSql = "SELECT COUNT(*) as total FROM admins $whereClause";
+$countSql = "SELECT COUNT(*) as total FROM students $whereClause";
 $stmt = $conn->prepare($countSql);
 if (!empty($params)) {
     $stmt->bind_param($types, ...$params);
@@ -80,8 +67,8 @@ $countResult = $stmt->get_result();
 $totalCount = $countResult->fetch_assoc()['total'];
 $stmt->close();
 
-$sql = "SELECT id, name, email, role, status, created_at 
-        FROM admins 
+$sql = "SELECT id, full_name, phone, email, grade_id, school_name, wallet_balance, status, created_at 
+        FROM students 
         $whereClause 
         ORDER BY id DESC 
         LIMIT ? OFFSET ?";
@@ -96,13 +83,13 @@ $stmt->execute();
 $result = $stmt->get_result();
 $stmt->close();
 
-$admins = [];
+$students = [];
 while ($row = $result->fetch_assoc()) {
-    $admins[] = $row;
+    $students[] = $row;
 }
 
 respond('success', [
-    'admins' => $admins,
+    'students' => $students,
     'total' => $totalCount,
     'page' => $page,
     'limit' => $limit,

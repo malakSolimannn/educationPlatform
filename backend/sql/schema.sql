@@ -37,7 +37,7 @@ CREATE TABLE students (
   phone VARCHAR(50) NOT NULL UNIQUE,
   email VARCHAR(190) UNIQUE,
   password VARCHAR(255) NOT NULL,
-  grade_level VARCHAR(100),
+  grade_id INT,
   school_name VARCHAR(190),
   wallet_balance DECIMAL(10,2) DEFAULT 0.00,
   status ENUM('active','inactive') DEFAULT 'active',
