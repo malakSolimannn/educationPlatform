@@ -8,7 +8,6 @@ $input = requireParams(['name']);
 
 $name = trim($input['name']);
 
-// Check if grade name already exists
 $stmt = $conn->prepare("SELECT id FROM grades WHERE name = ?");
 $stmt->bind_param("s", $name);
 $stmt->execute();

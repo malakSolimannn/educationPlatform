@@ -1,5 +1,7 @@
 <?php
 
+define('CLOUDFLARE_ACCOUNT_ID', 'your_account_id_here');
+define('CLOUDFLARE_STREAM_TOKEN', 'your_api_token_here');
 $dbHost = 'localhost';
 $dbUser = 'root';
 $dbPass = '';

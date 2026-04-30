@@ -89,8 +89,30 @@ CREATE TABLE item_access_map (
   UNIQUE KEY uq_item_grants (item_id, grants_item_id)
 );
 
+CREATE TABLE item_prerequisites (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+
+  item_id INT NOT NULL,
+  prerequisite_item_id INT DEFAULT NULL,
+  prerequisite_quiz_id INT DEFAULT NULL,
+
+  required_score DECIMAL(5,2) DEFAULT NULL,
+  requirement_type ENUM('lesson_completed','quiz_passed') NOT NULL,
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE KEY uq_item_prerequisite (
+    item_id,
+    prerequisite_item_id,
+    prerequisite_quiz_id,
+    requirement_type
+  )
+);
+
 CREATE TABLE codes (
   id INT AUTO_INCREMENT PRIMARY KEY,
+
+  batch_id INT NOT NULL,
 
   code VARCHAR(100) NOT NULL UNIQUE,
   code_type ENUM('wallet','item') NOT NULL,
@@ -112,16 +134,50 @@ CREATE TABLE codes (
   )
 );
 
-CREATE TABLE transactions (
+CREATE TABLE code_batches (
   id INT AUTO_INCREMENT PRIMARY KEY,
 
-  student_id INT NOT NULL,
+  center_id INT NOT NULL,
+  created_by_admin_id INT NOT NULL,
+
+  code_type ENUM('wallet','item') NOT NULL,
+  wallet_amount DECIMAL(10,2) DEFAULT NULL,
   item_id INT DEFAULT NULL,
 
-  transaction_type ENUM(
-    'code_wallet_redeem',
-    'code_item_redeem',
-    'direct_item_purchase'
+  quantity INT NOT NULL,
+  expires_at DATETIME DEFAULT NULL,
+  notes TEXT DEFAULT NULL,
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  CHECK (
+    (code_type = 'wallet' AND wallet_amount IS NOT NULL AND item_id IS NULL)
+    OR
+    (code_type = 'item' AND wallet_amount IS NULL AND item_id IS NOT NULL)
+  )
+);
+
+CREATE TABLE centers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(190) NOT NULL,
+  phone VARCHAR(50),
+  address TEXT,
+  status ENUM('active','inactive') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE payments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+
+  student_id INT DEFAULT NULL,
+  center_id INT DEFAULT NULL,
+
+  item_id INT DEFAULT NULL,
+  batch_id INT DEFAULT NULL,
+
+  payment_type ENUM(
+    'direct_item_purchase',
+    'center_batch_purchase'
   ) NOT NULL,
 
   amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
@@ -133,15 +189,21 @@ CREATE TABLE transactions (
 
   CHECK (
     (
-      transaction_type = 'code_wallet_redeem'
-      AND item_id IS NULL
+      payment_type = 'direct_item_purchase'
+      AND student_id IS NOT NULL
+      AND center_id IS NULL
+      AND item_id IS NOT NULL
+      AND batch_id IS NULL
     )
     OR
     (
-      transaction_type IN ('code_item_redeem','direct_item_purchase')
-      AND item_id IS NOT NULL
+      payment_type = 'center_batch_purchase'
+      AND center_id IS NOT NULL
+      AND student_id IS NULL
+      AND batch_id IS NOT NULL
+      AND item_id IS NULL
     )
-  )
+  ),
 );
 
 CREATE TABLE student_access (
@@ -171,11 +233,10 @@ CREATE TABLE lesson_progress (
 
 CREATE TABLE quizzes (
   id INT AUTO_INCREMENT PRIMARY KEY,
-
   item_id INT DEFAULT NULL,
   title VARCHAR(200) NOT NULL,
   time_limit_minutes INT,
-  type VARCHAR(200) NOT NULL,
+  type ENUM('practice','exam','assignment','placement') NOT NULL,
   attempt_limit INT,
   randomize_questions TINYINT(1) DEFAULT 0,
   randomize_answers TINYINT(1) DEFAULT 0,
@@ -184,9 +245,9 @@ CREATE TABLE quizzes (
 
 CREATE TABLE quiz_questions (
   id INT AUTO_INCREMENT PRIMARY KEY,
-
   quiz_id INT NOT NULL,
   question_type ENUM('mcq','true_false','text') NOT NULL,
+  points DECIMAL(5,2) DEFAULT 1.00,
   question_text TEXT NOT NULL
 );
 
@@ -203,7 +264,7 @@ CREATE TABLE quiz_attempts (
 
   quiz_id INT NOT NULL,
   student_id INT NOT NULL,
-
+  status ENUM('in_progress','submitted','pending_review','graded') DEFAULT 'in_progress',
   score DECIMAL(8,2),
   started_at DATETIME NOT NULL,
   submitted_at DATETIME
@@ -211,7 +272,6 @@ CREATE TABLE quiz_attempts (
 
 CREATE TABLE student_quiz_answers (
   id INT AUTO_INCREMENT PRIMARY KEY,
-
   attempt_id INT NOT NULL,
   question_id INT NOT NULL,
   selected_option_id INT DEFAULT NULL,
@@ -222,8 +282,8 @@ CREATE TABLE student_quiz_answers (
 
 CREATE TABLE assignments (
   id INT AUTO_INCREMENT PRIMARY KEY,
-
   item_id INT DEFAULT NULL,
+  file_path TEXT,
   title VARCHAR(200) NOT NULL,
   description TEXT,
   due_date DATETIME NOT NULL
@@ -256,7 +316,6 @@ CREATE TABLE notifications (
 
 CREATE TABLE announcements (
   id INT AUTO_INCREMENT PRIMARY KEY,
-
   title VARCHAR(200),
   message TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
