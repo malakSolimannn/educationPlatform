@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Item Details</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="back-link" href="javascript:history.back()">&larr; Back</a>
+
+    <section class="hero">
+      <h1>Item Details</h1>
+      <p>Review the published item summary and included access before signing in.</p>
+    </section>
+
+    <section class="section">
+      <div id="status" class="status-card">Loading item...</div>
+      <div id="details" hidden></div>
+    </section>
+  </main>
+
+  <script src="api.js"></script>
+  <script>
+    const itemId = getQueryParam('id');
+    const statusEl = document.getElementById('status');
+    const detailsEl = document.getElementById('details');
+
+    function renderIncludedItems(items) {
+      if (!Array.isArray(items) || !items.length) {
+        return '';
+      }
+
+      return `
+        <section class="section">
+          <div class="detail-card detail-body">
+            <h2>What&rsquo;s included</h2>
+            <div class="included-list">
+              ${items.map((item) => `
+                <article class="included-item">
+                  <h4>${escapeHtml(item.title)}</h4>
+                  <p>${escapeHtml(item.description || 'No description available.')}</p>
+                  <div class="meta-list">
+                    <span class="meta-pill">${escapeHtml(toTitleCase(item.item_type))}</span>
+                    <span class="meta-pill">${escapeHtml(formatPrice(item))}</span>
+                    <span class="meta-pill">${escapeHtml(formatDuration(item.duration_days))}</span>
+                    <span class="meta-pill">${escapeHtml(toTitleCase(item.access_type || 'lifetime'))}</span>
+                  </div>
+                </article>
+              `).join('')}
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
+    function renderItem(item) {
+      const action = getToken()
+        ? '<a class="primary-btn" href="my-items.html">Purchase / Access</a>'
+        : `<a class="primary-btn" href="auth.html?redirect=${encodeURIComponent(`item.html?id=${item.id}`)}">Login/Register to Access Content</a>`;
+
+      detailsEl.hidden = false;
+      detailsEl.innerHTML = `
+        <div class="detail-layout">
+          <article class="detail-card">
+            ${item.image_url ? `<img class="detail-image" src="${resolveImageUrl(item.image_url)}" alt="${escapeHtml(item.title)}">` : '<div class="detail-image"></div>'}
+          </article>
+          <article class="detail-card detail-body">
+            <h2>${escapeHtml(item.title)}</h2>
+            <p class="detail-copy">${escapeHtml(item.description || 'No description available.')}</p>
+            <div class="meta-list">
+              <span class="meta-pill">${escapeHtml(toTitleCase(item.item_type))}</span>
+              <span class="meta-pill">${escapeHtml(formatPrice(item))}</span>
+              <span class="meta-pill">${escapeHtml(toTitleCase(item.access_type || 'lifetime'))}</span>
+              <span class="meta-pill">${escapeHtml(formatDuration(item.duration_days))}</span>
+            </div>
+            ${action}
+          </article>
+        </div>
+        ${renderIncludedItems(item.accessed_items)}
+      `;
+    }
+
+    async function init() {
+      if (!itemId) {
+        statusEl.textContent = 'Missing id in the URL.';
+        return;
+      }
+
+      try {
+        const item = await getItemById(itemId);
+        statusEl.hidden = true;
+        renderItem(item);
+      } catch (error) {
+        statusEl.textContent = error.message || 'Failed to load item.';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

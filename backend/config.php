@@ -5,12 +5,12 @@ define('CLOUDFLARE_STREAM_TOKEN', 'your_api_token_here');
 $dbHost = 'localhost';
 $dbUser = 'root';
 $dbPass = '';
-$dbName = 'teachers_platform';
+$dbName = 'education_platform';
 $conn = new mysqli($dbHost, $dbUser, $dbPass, $dbName);
 
 // CORS Headers
 header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Headers: Content-Type, X-Authorization");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Authorization");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Max-Age: 86400");
 
@@ -105,14 +105,19 @@ function verifyToken($token)
 {
     global $conn;
 
-    $query = "SELECT 
-        admins.id AS id, 
-        admins.role AS auth_type 
-    FROM admins_sessions 
-    JOIN admins ON admins.id = admins_sessions.admin_id 
-    WHERE admins_sessions.token = ? 
-    AND admins_sessions.status = 'active' 
-    AND admins_sessions.expires_at > NOW()";
+    $query = "
+        SELECT 
+            admins.id AS id,
+            admins.role AS auth_type,
+            'admin' AS user_type
+        FROM admins_sessions
+        JOIN admins ON admins.id = admins_sessions.admin_id
+        WHERE admins_sessions.token = ?
+        AND admins_sessions.status = 'active'
+        AND admins_sessions.expires_at > NOW()
+        AND admins.status = 'active'
+        LIMIT 1
+    ";
 
     $stmt = $conn->prepare($query);
     $stmt->bind_param("s", $token);
@@ -120,11 +125,35 @@ function verifyToken($token)
     $result = $stmt->get_result();
     $stmt->close();
 
-    if ($result->num_rows === 0) {
-        respond('error', 'Invalid session');
+    if ($result->num_rows > 0) {
+        return $result->fetch_assoc();
     }
 
-    return $result->fetch_assoc();
+    $query = "
+        SELECT 
+            students.id AS id,
+            'student' AS auth_type,
+            'student' AS user_type
+        FROM student_sessions
+        JOIN students ON students.id = student_sessions.student_id
+        WHERE student_sessions.token = ?
+        AND student_sessions.status = 'active'
+        AND student_sessions.expires_at > NOW()
+        AND students.status = 'active'
+        LIMIT 1
+    ";
+
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("s", $token);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $stmt->close();
+
+    if ($result->num_rows > 0) {
+        return $result->fetch_assoc();
+    }
+
+    respond('error', 'Invalid session');
 }
 
 function requireAuth($allowedRoles = [])
@@ -141,8 +170,12 @@ function requireAuth($allowedRoles = [])
         $allowedRoles = [$allowedRoles];
     }
 
-    if (in_array('admin', $allowedRoles)) {
-        $allowedRoles = array_merge($allowedRoles, ['super_admin', 'admin', 'assistant']);
+    if (in_array('admins', $allowedRoles)) {
+        $allowedRoles = array_merge($allowedRoles, [
+            'super_admin',
+            'admin',
+            'assistant'
+        ]);
     }
 
     if (!in_array($auth['auth_type'], $allowedRoles)) {
@@ -152,38 +185,6 @@ function requireAuth($allowedRoles = [])
     $auth['token'] = $token;
 
     return $auth;
-}
-
-function getAdminById($adminId)
-{
-    global $conn;
-
-    $stmt = $conn->prepare("
-            SELECT id, name, email, role, status
-            FROM admins
-            WHERE id = ?
-        ");
-
-    if (!$stmt) {
-        respond('error', 'Failed to prepare admin query');
-    }
-
-    $stmt->bind_param("i", $adminId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $stmt->close();
-
-    if ($result->num_rows === 0) {
-        respond('error', 'Admin not found');
-    }
-
-    $admin = $result->fetch_assoc();
-
-    if ($admin['status'] !== 'active') {
-        respond('error', 'Admin is inactive');
-    }
-
-    return $admin;
 }
 
 function getBody()
@@ -202,3 +203,14 @@ function logAction($adminId, $action, $target_type, $target_id, $details = null)
     $stmt->close();
 
     return ['log_id' => $logId];}
+
+function optionalAuth()
+{
+    $token = getToken();
+
+    if (!$token) {
+        return null;
+    }
+
+    return verifyToken($token);
+}

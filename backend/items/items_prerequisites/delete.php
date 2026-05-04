@@ -1,6 +1,6 @@
 <?php
 
-require_once '../config.php';
+require_once '../../config.php';
 
 validateRequestMethod('DELETE');
 $auth = requireAuth(['super_admin', 'admin']);

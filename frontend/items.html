@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public Items</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="back-link" href="index.html">&larr; Back to grades</a>
+
+    <section class="hero">
+      <h1>Explore Items</h1>
+      <p>Search and filter published courses, packages, and passes for the selected grade.</p>
+    </section>
+
+    <section class="section toolbar">
+      <input id="searchInput" class="search-input" type="search" placeholder="Search by title or description">
+      <div class="filters" id="filters">
+        <button class="filter-btn active" data-filter="">All</button>
+        <button class="filter-btn" data-filter="course">Courses</button>
+        <button class="filter-btn" data-filter="package">Packages</button>
+        <button class="filter-btn" data-filter="pass">Passes</button>
+      </div>
+    </section>
+
+    <section class="section">
+      <div id="status" class="status-card">Loading items...</div>
+      <div id="itemsGrid" class="grid items-grid" hidden></div>
+      <div id="emptyState" class="empty-state" hidden>No matching items found.</div>
+    </section>
+  </main>
+
+  <script src="api.js"></script>
+  <script>
+    const gradeId = getQueryParam('grade_id');
+    const statusEl = document.getElementById('status');
+    const itemsGridEl = document.getElementById('itemsGrid');
+    const emptyStateEl = document.getElementById('emptyState');
+    const searchInputEl = document.getElementById('searchInput');
+    const filtersEl = document.getElementById('filters');
+
+    let currentFilter = '';
+    let searchTimer = null;
+
+    function renderItems(items) {
+      if (!items.length) {
+        itemsGridEl.hidden = true;
+        emptyStateEl.hidden = false;
+        return;
+      }
+
+      emptyStateEl.hidden = true;
+      itemsGridEl.hidden = false;
+      itemsGridEl.innerHTML = items.map((item) => `
+        <article class="item-card">
+          ${item.image_url ? `<img class="item-image" src="${resolveImageUrl(item.image_url)}" alt="${escapeHtml(item.title)}">` : '<div class="item-image"></div>'}
+          <div class="item-body">
+            <h3>${escapeHtml(item.title)}</h3>
+            <p>${escapeHtml(item.description || 'No description available.')}</p>
+            <div class="meta-list">
+              <span class="meta-pill">${escapeHtml(toTitleCase(item.item_type))}</span>
+              <span class="meta-pill">${escapeHtml(formatPrice(item))}</span>
+              <span class="meta-pill">${escapeHtml(formatDuration(item.duration_days))}</span>
+              <span class="meta-pill">${escapeHtml(toTitleCase(item.access_type || 'lifetime'))}</span>
+            </div>
+            <a class="primary-btn" href="item.html?id=${encodeURIComponent(item.id)}">View Details</a>
+          </div>
+        </article>
+      `).join('');
+    }
+
+    async function loadItems() {
+      if (!gradeId) {
+        statusEl.textContent = 'Missing grade_id in the URL.';
+        return;
+      }
+
+      statusEl.hidden = false;
+      statusEl.textContent = 'Loading items...';
+      itemsGridEl.hidden = true;
+      emptyStateEl.hidden = true;
+
+      try {
+        const data = await getItems({
+          grade_id: gradeId,
+          item_type: currentFilter,
+          search: searchInputEl.value.trim()
+        });
+
+        statusEl.hidden = true;
+        renderItems(Array.isArray(data.items) ? data.items : []);
+      } catch (error) {
+        statusEl.hidden = false;
+        statusEl.textContent = error.message || 'Failed to load items.';
+      }
+    }
+
+    filtersEl.addEventListener('click', (event) => {
+      const button = event.target.closest('.filter-btn');
+      if (!button) {
+        return;
+      }
+
+      currentFilter = button.dataset.filter || '';
+      [...filtersEl.querySelectorAll('.filter-btn')].forEach((item) => item.classList.remove('active'));
+      button.classList.add('active');
+      loadItems();
+    });
+
+    searchInputEl.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(loadItems, 250);
+    });
+
+    loadItems();
+  </script>
+</body>
+</html>

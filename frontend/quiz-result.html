@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quiz Result</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="back-link" href="my-items.html">&larr; Back to my items</a>
+
+    <section class="hero">
+      <h1>Quiz Result</h1>
+      <p>Review the submitted attempt status, score, and any returned answers.</p>
+    </section>
+
+    <section class="section stack">
+      <div id="status" class="status-card">Loading result...</div>
+      <div id="resultCard" hidden></div>
+    </section>
+  </main>
+
+  <script src="api.js"></script>
+  <script>
+    if (!requireStudentAuth()) {
+      throw new Error('Unauthorized');
+    }
+
+    const attemptId = getQueryParam('attempt_id');
+    const statusEl = document.getElementById('status');
+    const resultCardEl = document.getElementById('resultCard');
+
+    function renderAnswers(answers) {
+      if (!Array.isArray(answers) || !answers.length) {
+        return '';
+      }
+
+      return `
+        <div class="section">
+          <article class="detail-card detail-body">
+            <h2>Answers</h2>
+            <div class="included-list">
+              ${answers.map((answer) => `
+                <article class="included-item">
+                  <h4>${escapeHtml(answer.question_text || 'Question')}</h4>
+                  <p>${escapeHtml(answer.selected_option_text || answer.text_answer || 'No answer saved.')}</p>
+                  <div class="meta-list">
+                    <span class="meta-pill">${escapeHtml(toTitleCase(answer.question_type || ''))}</span>
+                    <span class="meta-pill">${escapeHtml(answer.grade ?? 'Pending')}</span>
+                    <span class="meta-pill">${escapeHtml(answer.is_correct === null ? 'Pending review' : answer.is_correct ? 'Correct' : 'Incorrect')}</span>
+                  </div>
+                </article>
+              `).join('')}
+            </div>
+          </article>
+        </div>
+      `;
+    }
+
+    async function init() {
+      if (!attemptId) {
+        statusEl.textContent = 'Missing attempt_id in the URL.';
+        return;
+      }
+
+      try {
+        const attempt = await apiGet('/quizzes/quiz_attempts/get.php', true, { id: attemptId });
+        statusEl.hidden = true;
+        resultCardEl.hidden = false;
+        resultCardEl.innerHTML = `
+          <article class="detail-card detail-body">
+            <h2>${escapeHtml(attempt.quiz_title || 'Quiz')}</h2>
+            <div class="meta-list">
+              <span class="meta-pill">${escapeHtml(toTitleCase(attempt.status || '-'))}</span>
+              <span class="meta-pill">${escapeHtml(attempt.score ?? 'N/A')}</span>
+              <span class="meta-pill">${escapeHtml(attempt.total_points ?? 'N/A')}</span>
+              <span class="meta-pill">${escapeHtml(attempt.score_percentage !== null ? `${attempt.score_percentage}%` : 'N/A')}</span>
+              <span class="meta-pill">${escapeHtml(attempt.submitted_at || 'Not submitted')}</span>
+            </div>
+          </article>
+          ${renderAnswers(attempt.answers)}
+        `;
+      } catch (error) {
+        statusEl.textContent = error.message || 'Failed to load result.';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

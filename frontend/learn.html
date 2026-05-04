@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Learn</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="back-link" href="my-items.html">&larr; Back to my items</a>
+
+    <section class="hero">
+      <h1>Learn</h1>
+      <p>Open the protected item content and launch quizzes for the current student.</p>
+    </section>
+
+    <section class="section stack">
+      <div id="itemStatus" class="status-card">Loading item...</div>
+      <div id="itemDetails" hidden></div>
+      <div id="quizStatus" class="status-card">Loading quizzes...</div>
+      <div id="quizGrid" class="grid items-grid" hidden></div>
+      <div id="quizEmpty" class="empty-state hidden">No quizzes found for this item.</div>
+    </section>
+  </main>
+
+  <script src="api.js"></script>
+  <script>
+    if (!requireStudentAuth()) {
+      throw new Error('Unauthorized');
+    }
+
+    const itemId = getQueryParam('item_id');
+    const itemStatusEl = document.getElementById('itemStatus');
+    const itemDetailsEl = document.getElementById('itemDetails');
+    const quizStatusEl = document.getElementById('quizStatus');
+    const quizGridEl = document.getElementById('quizGrid');
+    const quizEmptyEl = document.getElementById('quizEmpty');
+
+    function renderContent(item) {
+      const content = item.content || {};
+      const videoUrl = content.video_url || item.video_url;
+      const filePath = content.file_path || item.file_path;
+      const resolvedFile = filePath ? resolveImageUrl(filePath) : '';
+
+      itemDetailsEl.hidden = false;
+      itemDetailsEl.innerHTML = `
+        <article class="detail-card detail-body">
+          <h2>${escapeHtml(item.title)}</h2>
+          <p class="detail-copy">${escapeHtml(item.description || 'No description available.')}</p>
+          <div class="meta-list">
+            <span class="meta-pill">${escapeHtml(toTitleCase(item.item_type))}</span>
+            <span class="meta-pill">${escapeHtml(item.status_message || 'Accessible')}</span>
+          </div>
+          ${videoUrl ? `<div class="stack"><div class="section-title">Video</div><iframe class="video-frame" src="${escapeHtml(videoUrl)}" allowfullscreen></iframe></div>` : ''}
+          ${filePath ? `<div class="stack"><div class="section-title">File</div><a class="primary-btn" href="${resolvedFile}" target="_blank" rel="noopener">Open File</a></div>` : ''}
+        </article>
+      `;
+    }
+
+    function renderQuizzes(quizzes) {
+      quizStatusEl.hidden = true;
+
+      if (!quizzes.length) {
+        quizEmptyEl.classList.remove('hidden');
+        return;
+      }
+
+      quizGridEl.hidden = false;
+      quizGridEl.innerHTML = quizzes.map((quiz) => `
+        <article class="quiz-card">
+          <h3>${escapeHtml(quiz.title)}</h3>
+          <p class="inline-meta">${escapeHtml(toTitleCase(quiz.type || 'practice'))}</p>
+          <div class="meta-list">
+            <span class="meta-pill">${escapeHtml(`${quiz.total_questions || 0} questions`)}</span>
+            <span class="meta-pill">${escapeHtml(quiz.time_limit_minutes ? `${quiz.time_limit_minutes} min` : 'No time limit')}</span>
+          </div>
+          <button class="primary-btn start-quiz-btn" type="button" data-quiz-id="${quiz.id}">Start Quiz</button>
+        </article>
+      `).join('');
+    }
+
+    async function loadItem() {
+    const item = await apiGet('/items/student_get_item.php', true, { id: itemId });
+      itemStatusEl.hidden = true;
+      renderContent(item);
+    }
+
+    async function loadQuizzes() {
+      const data = await apiGet('/quizzes/students_get.php', true, { item_id: itemId });
+      renderQuizzes(Array.isArray(data) ? data : data.quizzes || []);
+    }
+
+    async function startQuiz(quizId, button) {
+      const label = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Starting...';
+
+      try {
+        const data = await apiPost('/quizzes/quiz_attempts/student_start_attempt.php', { quiz_id: Number(quizId) }, true);
+        storePendingAttempt(data);
+        window.location.href = `quiz-attempt.html?attempt_id=${encodeURIComponent(data.attempt_id)}`;
+      } catch (error) {
+        alert(error.message || 'Failed to start quiz.');
+        button.disabled = false;
+        button.textContent = label;
+      }
+    }
+
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('.start-quiz-btn');
+      if (!button) {
+        return;
+      }
+
+      startQuiz(button.dataset.quizId, button);
+    });
+
+    async function init() {
+      if (!itemId) {
+        itemStatusEl.textContent = 'Missing item_id in the URL.';
+        quizStatusEl.hidden = true;
+        return;
+      }
+
+      try {
+        await loadItem();
+      } catch (error) {
+        itemStatusEl.textContent = error.message || 'Failed to load item.';
+      }
+
+      try {
+        await loadQuizzes();
+      } catch (error) {
+        quizStatusEl.textContent = error.message || 'Failed to load quizzes.';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

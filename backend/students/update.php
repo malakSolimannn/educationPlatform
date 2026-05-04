@@ -3,11 +3,16 @@
 require_once '../config.php';
 
 validateRequestMethod('PUT');
-$auth=requireAuth(['super_admin', 'admin', 'assistant']);
-$input = requireParams(['id']);
 
-$studentId = (int)$input['id'];
+$auth = requireAuth(['super_admin', 'admin', 'student']);
+$input = getBody();
 
+if ($auth['auth_type'] === 'student') {
+    $studentId = (int)$auth['id'];
+} else {
+    requireParams(['id']);
+    $studentId = (int)$input['id'];
+}
 $stmt = $conn->prepare("SELECT id FROM students WHERE id = ?");
 $stmt->bind_param("i", $studentId);
 $stmt->execute();
@@ -29,8 +34,10 @@ if (isset($input['full_name']) && $input['full_name'] !== '') {
 }
 
 if (isset($input['phone']) && $input['phone'] !== '') {
+    $phone = trim($input['phone']);
+
     $stmt = $conn->prepare("SELECT id FROM students WHERE phone = ? AND id != ?");
-    $stmt->bind_param("si", $input['phone'], $studentId);
+    $stmt->bind_param("si", $phone, $studentId);
     $stmt->execute();
     $result = $stmt->get_result();
     $stmt->close();
@@ -40,13 +47,14 @@ if (isset($input['phone']) && $input['phone'] !== '') {
     }
 
     $updates[] = 'phone = ?';
-    $params[] = trim($input['phone']);
+    $params[] = $phone;
     $types .= 's';
 }
 
 if (isset($input['email']) && $input['email'] !== '') {
+    $email = trim($input['email']);
     $stmt = $conn->prepare("SELECT id FROM students WHERE email = ? AND id != ?");
-    $stmt->bind_param("si", $input['email'], $studentId);
+    $stmt->bind_param("si", $email, $studentId);
     $stmt->execute();
     $result = $stmt->get_result();
     $stmt->close();
@@ -56,7 +64,7 @@ if (isset($input['email']) && $input['email'] !== '') {
     }
 
     $updates[] = 'email = ?';
-    $params[] = trim($input['email']);
+    $params[] = $email;
     $types .= 's';
 }
 
@@ -68,7 +76,7 @@ if (isset($input['password']) && $input['password'] !== '') {
 
 if (isset($input['grade_id']) && $input['grade_id'] !== '') {
     $updates[] = 'grade_id = ?';
-    $params[] = intval($input['grade_id']);
+    $params[] = (int)$input['grade_id'];
     $types .= 'i';
 }
 
@@ -78,20 +86,24 @@ if (isset($input['school_name']) && $input['school_name'] !== '') {
     $types .= 's';
 }
 
-if (isset($input['status']) && $input['status'] !== '') {
-    $allowedStatuses = ['active', 'inactive'];
-    if (!in_array($input['status'], $allowedStatuses)) {
-        respond('error', 'Invalid status');
-    }
-    $updates[] = 'status = ?';
-    $params[] = $input['status'];
-    $types .= 's';
-}
+if ($auth['auth_type'] !== 'student') {
+    if (isset($input['status']) && $input['status'] !== '') {
+        $allowedStatuses = ['active', 'inactive'];
 
-if (isset($input['wallet_balance'])) {
-    $updates[] = 'wallet_balance = ?';
-    $params[] = (float)$input['wallet_balance'];
-    $types .= 'd';
+        if (!in_array($input['status'], $allowedStatuses)) {
+            respond('error', 'Invalid status');
+        }
+
+        $updates[] = 'status = ?';
+        $params[] = $input['status'];
+        $types .= 's';
+    }
+
+    if (isset($input['wallet_balance'])) {
+        $updates[] = 'wallet_balance = ?';
+        $params[] = (float)$input['wallet_balance'];
+        $types .= 'd';
+    }
 }
 
 if (empty($updates)) {
@@ -108,10 +120,14 @@ $stmt->bind_param($types, ...$params);
 if ($stmt->execute()) {
     $stmt->close();
 
+    if ($auth['auth_type'] === 'student') {
+        respond('success', ['message' => 'Profile updated successfully']);
+    }
+
     logAction($auth['id'], 'update_student', 'student', $studentId, "Updated student ID: $studentId");
 
     respond('success', ['message' => 'Student updated successfully']);
-} else {
-    $stmt->close();
-    respond('error', 'Failed to update student');
 }
+
+$stmt->close();
+respond('error', 'Failed to update student');

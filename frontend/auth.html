@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Auth</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="back-link" href="index.html">&larr; Back to grades</a>
+
+    <section class="hero">
+      <h1>Student Access</h1>
+      <p>Use this test page to register a student account or sign in and continue the learning flow.</p>
+    </section>
+
+    <section class="section">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="login">Login</button>
+        <button class="tab-btn" data-tab="register">Register</button>
+      </div>
+    </section>
+
+    <section class="section two-col">
+      <article id="loginCard" class="form-card">
+        <h2>Login</h2>
+        <p class="inline-meta">Use the student email and password for this test login.</p>
+        <div id="loginError" class="error-box hidden"></div>
+        <form id="loginForm" class="stack">
+          <div class="field-group">
+            <label for="loginEmail">Email</label>
+            <input id="loginEmail" name="email" class="text-input" type="email" required>
+          </div>
+          <div class="field-group">
+            <label for="loginPassword">Password</label>
+            <input id="loginPassword" name="password" class="text-input" type="password" required>
+          </div>
+          <div class="form-actions">
+            <button id="loginBtn" class="primary-btn" type="submit">Login</button>
+          </div>
+        </form>
+      </article>
+
+      <article id="registerCard" class="form-card hidden">
+        <h2>Register</h2>
+        <div id="registerError" class="error-box hidden"></div>
+        <form id="registerForm" class="stack">
+          <div class="field-group">
+            <label for="fullName">Full name</label>
+            <input id="fullName" name="full_name" class="text-input" type="text" required>
+          </div>
+          <div class="field-group">
+            <label for="registerPhone">Phone</label>
+            <input id="registerPhone" name="phone" class="text-input" type="text" required>
+          </div>
+          <div class="field-group">
+            <label for="registerEmail">Email</label>
+            <input id="registerEmail" name="email" class="text-input" type="email">
+          </div>
+          <div class="field-group">
+            <label for="registerGrade">Grade ID</label>
+            <input id="registerGrade" name="grade_id" class="text-input" type="number" min="1">
+          </div>
+          <div class="field-group">
+            <label for="schoolName">School name</label>
+            <input id="schoolName" name="school_name" class="text-input" type="text">
+          </div>
+          <div class="field-group">
+            <label for="registerPassword">Password</label>
+            <input id="registerPassword" name="password" class="text-input" type="password" required>
+          </div>
+          <div class="form-actions">
+            <button id="registerBtn" class="primary-btn" type="submit">Register</button>
+          </div>
+        </form>
+      </article>
+    </section>
+  </main>
+
+  <script src="api.js"></script>
+  <script>
+    const redirectUrl = getRedirectUrl('my-items.html');
+    const loginCard = document.getElementById('loginCard');
+    const registerCard = document.getElementById('registerCard');
+    const loginError = document.getElementById('loginError');
+    const registerError = document.getElementById('registerError');
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+
+    function showTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach((button) => {
+        button.classList.toggle('active', button.dataset.tab === tab);
+      });
+      loginCard.classList.toggle('hidden', tab !== 'login');
+      registerCard.classList.toggle('hidden', tab !== 'register');
+    }
+
+    function setError(element, message) {
+      element.textContent = message || '';
+      element.classList.toggle('hidden', !message);
+    }
+
+    function setLoading(button, isLoading, loadingText) {
+      button.disabled = isLoading;
+      button.textContent = isLoading ? loadingText : button.dataset.defaultLabel;
+    }
+
+    document.querySelectorAll('.tab-btn').forEach((button) => {
+      button.addEventListener('click', () => showTab(button.dataset.tab));
+    });
+
+    document.querySelectorAll('#loginBtn, #registerBtn').forEach((button) => {
+      button.dataset.defaultLabel = button.textContent;
+    });
+
+    loginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setError(loginError, '');
+      const submitBtn = document.getElementById('loginBtn');
+      setLoading(submitBtn, true, 'Logging in...');
+
+      try {
+        const formData = new FormData(loginForm);
+        const data = await apiPost('/students/login.php', {
+          email: formData.get('email'),
+          password: formData.get('password')
+        });
+
+        setAuth(data.token, data.student);
+        window.location.href = redirectUrl;
+      } catch (error) {
+        setError(loginError, error.message || 'Login failed.');
+      } finally {
+        setLoading(submitBtn, false, 'Logging in...');
+      }
+    });
+
+    registerForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setError(registerError, '');
+      const submitBtn = document.getElementById('registerBtn');
+      setLoading(submitBtn, true, 'Registering...');
+
+      try {
+        const formData = new FormData(registerForm);
+        const data = await apiPost('/students/register.php', {
+          full_name: formData.get('full_name'),
+          phone: formData.get('phone'),
+          email: formData.get('email'),
+          grade_id: formData.get('grade_id'),
+          school_name: formData.get('school_name'),
+          password: formData.get('password')
+        });
+
+        setAuth(data.token, data.student);
+        window.location.href = redirectUrl;
+      } catch (error) {
+        setError(registerError, error.message || 'Registration failed.');
+      } finally {
+        setLoading(submitBtn, false, 'Registering...');
+      }
+    });
+
+    if (getToken()) {
+      window.location.href = redirectUrl;
+    }
+  </script>
+</body>
+</html>

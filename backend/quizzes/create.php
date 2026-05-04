@@ -58,7 +58,7 @@ $stmt = $conn->prepare("
 ");
 
 $stmt->bind_param(
-    "isisii ii",
+    "isisiiii",
     $itemId,
     $title,
     $timeLimitMinutes,

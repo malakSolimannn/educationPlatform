@@ -3,7 +3,7 @@
 require_once '../config.php';
 
 validateRequestMethod('GET');
-requireAuth(['super_admin', 'admin', 'assistant']);
+requireAuth(['super_admin', 'admin', 'assistant', 'student']);
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : null;
 $search = isset($_GET['search']) ? trim($_GET['search']) : null;

@@ -78,7 +78,7 @@ CREATE TABLE items (
   is_free TINYINT(1) DEFAULT 0,
   is_published TINYINT(1) DEFAULT 1,
   sort_order INT DEFAULT 0,
-
+  image_url TEXT AFTER description,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

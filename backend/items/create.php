@@ -3,6 +3,7 @@
 require_once '../config.php';
 require_once '../helpers/upload_file.php';
 require_once '../helpers/cloudflare_stream.php';
+require_once '../helpers/upload_image.php';
 
 validateRequestMethod('POST');
 
@@ -12,6 +13,7 @@ $input= requireParams(['item_type', 'title', 'grade_id']);
 $itemType = trim($input['item_type']);
 $title = trim($input['title']);
 $description = isset($input['description']) ? trim($input['description']) : null;
+$imageUrl = uploadImage('image', 'items', 3);
 
 $parentId = isset($input['parent_id']) && $input['parent_id'] !== ''
     ? intval($input['parent_id'])
@@ -116,8 +118,9 @@ $stmt = $conn->prepare("
         grade_id,
         is_free,
         is_published,
+        image_url,
         sort_order
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ");
 
 if (!$stmt) {
@@ -125,7 +128,7 @@ if (!$stmt) {
 }
 
 $stmt->bind_param(
-    "issssssdisiiii",
+    "issssssdisiiisi",
     $parentId,
     $itemType,
     $title,
@@ -139,6 +142,7 @@ $stmt->bind_param(
     $gradeId,
     $isFree,
     $isPublished,
+    $imageUrl,
     $sortOrder
 );
 
@@ -168,4 +172,5 @@ respond('success', [
     'grade_id' => $gradeId,
     'is_free' => $isFree,
     'is_published' => $isPublished,
+    'image_url' => $imageUrl,
     'sort_order' => $sortOrder]);

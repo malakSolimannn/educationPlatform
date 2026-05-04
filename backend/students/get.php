@@ -3,20 +3,37 @@
 require_once '../config.php';
 
 validateRequestMethod('GET');
-requireAuth(['super_admin', 'admin', 'assistant']);
+
+$auth = requireAuth(['admins', 'student']);
 
 $studentId = isset($_GET['id']) ? (int)$_GET['id'] : null;
-$status = isset($_GET['status']) ? $_GET['status'] : null;
-$gradeId = isset($_GET['grade_id']) ? intval($_GET['grade_id']) : null;
+
+if ($auth['auth_type'] === 'student') {
+    $studentId = (int)$auth['id'];
+}
+
+$status = isset($_GET['status']) ? trim($_GET['status']) : null;
+$gradeId = isset($_GET['grade_id']) ? (int)$_GET['grade_id'] : null;
 $search = isset($_GET['search']) ? trim($_GET['search']) : null;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 
+if ($page < 1) $page = 1;
+if ($limit < 1) $limit = 20;
 if ($limit > 100) $limit = 100;
+
 $offset = ($page - 1) * $limit;
 
 if ($studentId) {
-    $stmt = $conn->prepare("SELECT id, full_name, phone, email, grade_id, school_name, wallet_balance, status, created_at FROM students WHERE id = ?");
+    $stmt = $conn->prepare("
+        SELECT 
+            id, full_name, phone, email, grade_id, school_name,
+            wallet_balance, status, created_at
+        FROM students
+        WHERE id = ?
+        LIMIT 1
+    ");
+
     $stmt->bind_param("i", $studentId);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -28,6 +45,10 @@ if ($studentId) {
 
     $student = $result->fetch_assoc();
     respond('success', $student);
+}
+
+if ($auth['auth_type'] === 'student') {
+    respond('error', 'You are not authorized to view students list');
 }
 
 $conditions = [];
@@ -55,23 +76,32 @@ if ($search) {
     $types .= 'sss';
 }
 
-$whereClause = !empty($conditions) ? "WHERE " . implode(" AND ", $conditions) : "";
+$whereClause = !empty($conditions)
+    ? "WHERE " . implode(" AND ", $conditions)
+    : "";
 
-$countSql = "SELECT COUNT(*) as total FROM students $whereClause";
+$countSql = "SELECT COUNT(*) AS total FROM students $whereClause";
+
 $stmt = $conn->prepare($countSql);
+
 if (!empty($params)) {
     $stmt->bind_param($types, ...$params);
 }
+
 $stmt->execute();
 $countResult = $stmt->get_result();
-$totalCount = $countResult->fetch_assoc()['total'];
+$totalCount = (int)$countResult->fetch_assoc()['total'];
 $stmt->close();
 
-$sql = "SELECT id, full_name, phone, email, grade_id, school_name, wallet_balance, status, created_at 
-        FROM students 
-        $whereClause 
-        ORDER BY id DESC 
-        LIMIT ? OFFSET ?";
+$sql = "
+    SELECT 
+        id, full_name, phone, email, grade_id, school_name,
+        wallet_balance, status, created_at
+    FROM students
+    $whereClause
+    ORDER BY id DESC
+    LIMIT ? OFFSET ?
+";
 
 $params[] = $limit;
 $params[] = $offset;
@@ -84,6 +114,7 @@ $result = $stmt->get_result();
 $stmt->close();
 
 $students = [];
+
 while ($row = $result->fetch_assoc()) {
     $students[] = $row;
 }

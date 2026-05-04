@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Choose Grade</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <h1>Choose Your Grade</h1>
+      <p>Browse the available grades, then open courses, packages, and passes for the selected level.</p>
+    </section>
+
+    <section class="section">
+      <div id="status" class="status-card">Loading grades...</div>
+      <div id="gradesGrid" class="grid grade-grid" hidden></div>
+    </section>
+  </main>
+
+  <script src="api.js"></script>
+  <script>
+    const statusEl = document.getElementById('status');
+    const gradesGridEl = document.getElementById('gradesGrid');
+
+    function renderGrades(grades) {
+      if (!grades.length) {
+        statusEl.textContent = 'No grades found.';
+        return;
+      }
+
+      statusEl.hidden = true;
+      gradesGridEl.hidden = false;
+      gradesGridEl.innerHTML = grades.map((grade) => `
+        <article class="grade-card">
+          <h3>${escapeHtml(grade.name)}</h3>
+          <a class="card-link" href="items.html?grade_id=${encodeURIComponent(grade.id)}">
+            View items &rarr;
+          </a>
+        </article>
+      `).join('');
+    }
+
+    async function init() {
+      try {
+        const grades = await getGrades();
+        renderGrades(Array.isArray(grades) ? grades : []);
+      } catch (error) {
+        statusEl.textContent = error.message || 'Failed to load grades.';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

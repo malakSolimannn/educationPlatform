@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quiz Attempt</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="back-link" href="my-items.html">&larr; Back to my items</a>
+
+    <section class="hero">
+      <h1>Quiz Attempt</h1>
+      <p>Answer the loaded questions, save them one by one, then submit the attempt.</p>
+    </section>
+
+    <section class="section stack">
+      <div id="status" class="status-card">Loading attempt...</div>
+      <div id="errorBox" class="error-box hidden"></div>
+      <article id="attemptCard" class="form-card hidden">
+        <h2 id="attemptTitle"></h2>
+        <p id="attemptMeta" class="inline-meta"></p>
+        <form id="attemptForm" class="stack"></form>
+        <div class="form-actions">
+          <button id="submitAttemptBtn" class="primary-btn" type="button">Submit Attempt</button>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script src="api.js"></script>
+  <script>
+    if (!requireStudentAuth()) {
+      throw new Error('Unauthorized');
+    }
+
+    const attemptId = getQueryParam('attempt_id');
+    const statusEl = document.getElementById('status');
+    const errorBoxEl = document.getElementById('errorBox');
+    const attemptCardEl = document.getElementById('attemptCard');
+    const attemptTitleEl = document.getElementById('attemptTitle');
+    const attemptMetaEl = document.getElementById('attemptMeta');
+    const attemptFormEl = document.getElementById('attemptForm');
+    const submitAttemptBtn = document.getElementById('submitAttemptBtn');
+    const answers = {};
+    let questions = [];
+    let attemptInfo = null;
+
+    function showError(message) {
+      errorBoxEl.textContent = message || '';
+      errorBoxEl.classList.toggle('hidden', !message);
+    }
+
+    function syncExistingAnswers(existingAnswers) {
+      existingAnswers.forEach((answer) => {
+        answers[answer.question_id] = {
+          selected_option_id: answer.selected_option_id || null,
+          text_answer: answer.text_answer || ''
+        };
+      });
+    }
+
+    function renderQuestions() {
+      attemptCardEl.classList.remove('hidden');
+      attemptTitleEl.textContent = attemptInfo?.quiz_title || attemptInfo?.quiz?.title || 'Quiz';
+      attemptMetaEl.textContent = `Attempt #${attemptId} • ${toTitleCase(attemptInfo?.status || 'in_progress')}`;
+      attemptFormEl.innerHTML = questions.map((question, index) => {
+        const saved = answers[question.id] || {};
+        const isText = question.question_type === 'text';
+
+        return `
+          <section class="quiz-question">
+            <h3>${index + 1}. ${escapeHtml(question.question_text)}</h3>
+            <p class="inline-meta">${escapeHtml(`${question.points || 0} points • ${toTitleCase(question.question_type)}`)}</p>
+            ${isText ? `
+              <textarea class="text-area question-input" data-question-id="${question.id}" placeholder="Write your answer here">${escapeHtml(saved.text_answer || '')}</textarea>
+            ` : `
+              <div class="option-list">
+                ${(question.options || []).map((option) => `
+                  <label class="option-item">
+                    <input
+                      type="radio"
+                      name="question_${question.id}"
+                      value="${option.id}"
+                      class="question-option"
+                      data-question-id="${question.id}"
+                      ${String(saved.selected_option_id) === String(option.id) ? 'checked' : ''}
+                    >
+                    <span>${escapeHtml(option.option_text)}</span>
+                  </label>
+                `).join('')}
+              </div>
+            `}
+          </section>
+        `;
+      }).join('');
+    }
+
+    async function loadAttempt() {
+      const attempt = await apiGet('/quizzes/quiz_attempts/get.php', true, { id: attemptId });
+      attemptInfo = attempt;
+      syncExistingAnswers(attempt.answers || []);
+
+      const cached = getPendingAttempt();
+      if (cached && String(cached.attempt_id) === String(attemptId) && Array.isArray(cached.questions)) {
+        questions = cached.questions;
+      }
+
+      if (!questions.length) {
+        throw new Error('Questions were not cached for this attempt. Start the quiz again from the learn page.');
+      }
+
+      statusEl.hidden = true;
+      renderQuestions();
+    }
+
+    async function saveAnswer(question) {
+      const draft = answers[question.id] || {};
+
+      await apiPost('/quizzes/student_answers/student_save_answer.php', {
+        attempt_id: Number(attemptId),
+        question_id: Number(question.id),
+        selected_option_id: draft.selected_option_id || null,
+        text_answer: draft.text_answer || null
+      }, true);
+    }
+
+    async function submitAttempt() {
+      showError('');
+      submitAttemptBtn.disabled = true;
+      submitAttemptBtn.textContent = 'Submitting...';
+
+      try {
+        for (const question of questions) {
+          if (!answers[question.id]) {
+            throw new Error(`Answer question ${question.id} before submitting.`);
+          }
+
+          await saveAnswer(question);
+        }
+
+        await apiPost('/quizzes/quiz_attempts/student_submit_attempt.php', {
+          attempt_id: Number(attemptId)
+        }, true);
+
+        localStorage.removeItem('pending_quiz_attempt');
+        window.location.href = `quiz-result.html?attempt_id=${encodeURIComponent(attemptId)}`;
+      } catch (error) {
+        showError(error.message || 'Failed to submit attempt.');
+        submitAttemptBtn.disabled = false;
+        submitAttemptBtn.textContent = 'Submit Attempt';
+      }
+    }
+
+    attemptFormEl.addEventListener('input', (event) => {
+      const radio = event.target.closest('.question-option');
+      const textArea = event.target.closest('.question-input');
+
+      if (radio) {
+        answers[radio.dataset.questionId] = {
+          selected_option_id: Number(radio.value),
+          text_answer: null
+        };
+      }
+
+      if (textArea) {
+        answers[textArea.dataset.questionId] = {
+          selected_option_id: null,
+          text_answer: textArea.value.trim()
+        };
+      }
+    });
+
+    submitAttemptBtn.addEventListener('click', submitAttempt);
+
+    if (!attemptId) {
+      statusEl.textContent = 'Missing attempt_id in the URL.';
+    } else {
+      loadAttempt().catch((error) => {
+        statusEl.textContent = error.message || 'Failed to load attempt.';
+      });
+    }
+  </script>
+</body>
+</html>

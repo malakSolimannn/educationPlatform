@@ -3,6 +3,7 @@
 require_once '../config.php';
 require_once '../helpers/upload_file.php';
 require_once '../helpers/cloudflare_stream.php';
+require_once '../helpers/upload_image.php';
 
 validateRequestMethod('POST');
 $auth = requireAuth(['super_admin', 'admin']);
@@ -135,6 +136,13 @@ if (isset($input['grade_id']) && $input['grade_id'] !== '') {
     if ($result->num_rows === 0) {
         respond('error', 'Invalid grade');
     }
+}
+if (isset($_FILES['image'])) {
+    $imageUrl = uploadImage('image', 'items', 3);
+
+    $updates[] = 'image_url = ?';
+    $params[] = $imageUrl;
+    $types .= 's';
 }
 if (isset($input['is_free'])) {
     $updates[] = 'is_free = ?';

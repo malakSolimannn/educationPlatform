@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Items</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="back-link" href="index.html">&larr; Back to grades</a>
+
+    <section class="hero">
+      <h1>My Items</h1>
+      <p>Review the items available for the current logged-in student account.</p>
+    </section>
+
+    <section class="section toolbar">
+      <div id="studentSummary" class="inline-meta"></div>
+      <button id="logoutBtn" class="secondary-btn" type="button">Logout</button>
+    </section>
+
+    <section class="section">
+      <div id="status" class="status-card">Loading your items...</div>
+      <div id="itemsGrid" class="grid items-grid" hidden></div>
+      <div id="emptyState" class="empty-state hidden">No accessible items found.</div>
+    </section>
+  </main>
+
+  <script src="api.js"></script>
+  <script>
+    if (!requireStudentAuth()) {
+      throw new Error('Unauthorized');
+    }
+
+    const statusEl = document.getElementById('status');
+    const itemsGridEl = document.getElementById('itemsGrid');
+    const emptyStateEl = document.getElementById('emptyState');
+    const summaryEl = document.getElementById('studentSummary');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const student = getStudentData();
+
+    summaryEl.textContent = student ? `${student.full_name} • ${student.phone}` : '';
+
+    function formatEndDate(item) {
+      return item.end_date ? item.end_date : 'Lifetime';
+    }
+
+    function renderItems(items) {
+      if (!items.length) {
+        statusEl.hidden = true;
+        emptyStateEl.classList.remove('hidden');
+        return;
+      }
+
+      statusEl.hidden = true;
+      itemsGridEl.hidden = false;
+      itemsGridEl.innerHTML = items.map((item) => `
+        <article class="item-card">
+          ${item.image_url ? `<img class="item-image" src="${resolveImageUrl(item.image_url)}" alt="${escapeHtml(item.title)}">` : '<div class="item-image"></div>'}
+          <div class="item-body">
+            <h3>${escapeHtml(item.title)}</h3>
+            <p>${escapeHtml(item.description || 'No description available.')}</p>
+            <div class="meta-list">
+              <span class="meta-pill">${escapeHtml(toTitleCase(item.item_type))}</span>
+              <span class="meta-pill">${escapeHtml(toTitleCase(item.status || 'active'))}</span>
+              <span class="meta-pill">${escapeHtml(item.start_date || '-')}</span>
+              <span class="meta-pill">${escapeHtml(formatEndDate(item))}</span>
+            </div>
+            <a class="primary-btn" href="learn.html?item_id=${encodeURIComponent(item.item_id)}">Open</a>
+          </div>
+        </article>
+      `).join('');
+    }
+
+    async function loadMyItems() {
+      try {
+        const data = await apiGet('/student_access/get_my_items.php', true);
+        renderItems(Array.isArray(data) ? data : data.items || []);
+      } catch (error) {
+        statusEl.textContent = error.message || 'Failed to load items.';
+      }
+    }
+
+    logoutBtn.addEventListener('click', () => {
+      clearAuth();
+      window.location.href = 'auth.html';
+    });
+
+    loadMyItems();
+  </script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 <?php
 
-require_once '../config.php';
+require_once '../../config.php';
 validateRequestMethod('GET');
 requireAuth(['super_admin', 'admin', 'assistant']);
 
