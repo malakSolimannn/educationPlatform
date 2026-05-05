@@ -3,7 +3,7 @@
 require_once '../config.php';
 
 validateRequestMethod('POST');
-requireAuth(['super_admin', 'admin']);
+$auth= requireAuth(['super_admin', 'admin']);
 $input = requireParams(['title', 'message']);
 
 $title = trim($input['title']);

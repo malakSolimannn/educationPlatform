@@ -6,6 +6,7 @@ validateRequestMethod('GET');
 requireAuth(['super_admin', 'admin', 'assistant']);
 
 $itemId = isset($_GET['id']) ? (int)$_GET['id'] : null;
+$parentId = isset($_GET['parent_id']) && $_GET['parent_id'] !== '' ? (int)$_GET['parent_id'] : null;
 $itemType = isset($_GET['item_type']) ? $_GET['item_type'] : null;
 $gradeId = isset($_GET['grade_id']) ? $_GET['grade_id'] : null;
 $status = isset($_GET['is_published']) ? (int)$_GET['is_published'] : null;
@@ -38,6 +39,11 @@ if ($itemType) {
     $conditions[] = "item_type = ?";
     $params[] = $itemType;
     $types .= 's';
+}
+if ($parentId !== null) {
+    $conditions[] = "parent_id = ?";
+    $params[] = $parentId;
+    $types .= 'i';
 }
 if ($gradeId) {
     $conditions[] = "grade_id = ?";

@@ -34,60 +34,86 @@ if ($quiz['item_id'] !== null) {
     }
 }
 
-$stmt = $conn->prepare("
-    SELECT id
-    FROM quiz_attempts
-    WHERE quiz_id = ?
-    AND student_id = ?
-    AND status = 'in_progress'
-    LIMIT 1
-");
+$conn->begin_transaction();
 
-$stmt->bind_param("ii", $quizId, $studentId);
-$stmt->execute();
-$existingAttempt = $stmt->get_result()->fetch_assoc();
-$stmt->close();
+try {
+    $stmt = $conn->prepare("
+        SELECT id
+        FROM students
+        WHERE id = ?
+        LIMIT 1
+        FOR UPDATE
+    ");
 
-if ($existingAttempt) {
-    $attemptId = (int)$existingAttempt['id'];
-} else {
-    if ($quiz['attempt_limit'] !== null) {
-        $stmt = $conn->prepare("
-            SELECT COUNT(*) AS total
-            FROM quiz_attempts
-            WHERE quiz_id = ?
-            AND student_id = ?
-            AND status IN ('submitted', 'pending_review', 'graded')
-        ");
+    $stmt->bind_param("i", $studentId);
+    $stmt->execute();
+    $studentRow = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
 
-        $stmt->bind_param("ii", $quizId, $studentId);
-        $stmt->execute();
-        $count = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
-
-        if ((int)$count['total'] >= (int)$quiz['attempt_limit']) {
-            respond('error', 'Attempt limit reached');
-        }
+    if (!$studentRow) {
+        throw new Exception('Student not found');
     }
 
     $stmt = $conn->prepare("
-        INSERT INTO quiz_attempts (
-            quiz_id,
-            student_id,
-            status,
-            started_at
-        ) VALUES (?, ?, 'in_progress', NOW())
+        SELECT id
+        FROM quiz_attempts
+        WHERE quiz_id = ?
+        AND student_id = ?
+        AND status = 'in_progress'
+        LIMIT 1
     ");
 
     $stmt->bind_param("ii", $quizId, $studentId);
+    $stmt->execute();
+    $existingAttempt = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
 
-    if (!$stmt->execute()) {
+    if ($existingAttempt) {
+        $attemptId = (int)$existingAttempt['id'];
+    } else {
+        if ($quiz['attempt_limit'] !== null) {
+            $stmt = $conn->prepare("
+                SELECT COUNT(*) AS total
+                FROM quiz_attempts
+                WHERE quiz_id = ?
+                AND student_id = ?
+                AND status IN ('submitted', 'pending_review', 'graded')
+            ");
+
+            $stmt->bind_param("ii", $quizId, $studentId);
+            $stmt->execute();
+            $count = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if ((int)$count['total'] >= (int)$quiz['attempt_limit']) {
+                throw new Exception('Attempt limit reached');
+            }
+        }
+
+        $stmt = $conn->prepare("
+            INSERT INTO quiz_attempts (
+                quiz_id,
+                student_id,
+                status,
+                started_at
+            ) VALUES (?, ?, 'in_progress', NOW())
+        ");
+
+        $stmt->bind_param("ii", $quizId, $studentId);
+
+        if (!$stmt->execute()) {
+            $stmt->close();
+            throw new Exception('Failed to start quiz attempt');
+        }
+
+        $attemptId = $stmt->insert_id;
         $stmt->close();
-        respond('error', 'Failed to start quiz attempt');
     }
 
-    $attemptId = $stmt->insert_id;
-    $stmt->close();
+    $conn->commit();
+} catch (Exception $e) {
+    $conn->rollback();
+    respond('error', $e->getMessage());
 }
 
 $orderQuestions = ((int)$quiz['randomize_questions'] === 1)

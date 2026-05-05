@@ -10,6 +10,7 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 
 if ($page < 1) $page = 1;
+if ($limit < 1) $limit = 20;
 if ($limit > 100) $limit = 100;
 
 $offset = ($page - 1) * $limit;
@@ -27,15 +28,28 @@ if ($id) {
     respond('success', $result->fetch_assoc());
 }
 
+$stmt = $conn->prepare("SELECT COUNT(*) AS total FROM payments");
+$stmt->execute();
+$countResult = $stmt->get_result();
+$totalCount = (int)$countResult->fetch_assoc()['total'];
+$stmt->close();
+
 $stmt = $conn->prepare("SELECT * FROM payments ORDER BY id DESC LIMIT ? OFFSET ?");
 $stmt->bind_param("ii", $limit, $offset);
 $stmt->execute();
 
 $result = $stmt->get_result();
+$stmt->close();
 
 $payments = [];
 while ($row = $result->fetch_assoc()) {
     $payments[] = $row;
 }
 
-respond('success', $payments);
+respond('success', [
+    'payments' => $payments,
+    'total' => $totalCount,
+    'page' => $page,
+    'limit' => $limit,
+    'total_pages' => ceil($totalCount / $limit)
+]);

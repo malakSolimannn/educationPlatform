@@ -61,7 +61,7 @@ function validateItemExists($itemId) {
     $stmt = $conn->prepare("
         SELECT id 
         FROM items 
-        WHERE id = ?
+        WHERE id = ? AND is_published = 1
         LIMIT 1
     ");
 

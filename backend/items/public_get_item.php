@@ -31,7 +31,8 @@ $safeColumns = "
     is_free,
     sort_order,
     created_at,
-    image_url
+    image_url,
+    content_type 
 ";
 
 if ($itemId) {

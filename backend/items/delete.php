@@ -25,7 +25,7 @@ $tables = [
     'quizzes' => 'item_id',
     'assignments' => 'item_id',
     'transactions' => 'item_id',
-    'items_prerequisites' => 'item_id',
+    'item_prerequisites' => 'item_id',
 ];
 foreach ($tables as $table => $col) {
     $stmt = $conn->prepare("DELETE FROM $table WHERE $col = ?");

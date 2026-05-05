@@ -3,7 +3,7 @@
 require_once '../config.php';
 
 validateRequestMethod('PUT');
-requireAuth(['super_admin', 'admin']);
+$auth= requireAuth(['super_admin', 'admin']);
 $input = requireParams(['id']);
 
 $id = (int)$input['id'];

@@ -1,248 +1,130 @@
 <?php
 
 require_once '../config.php';
+require_once '../helpers/access_helper.php';
+require_once '../helpers/student_access.php';
 
 validateRequestMethod('POST');
-$auth = requireAuth(['student']);
 
-$input = requireParams(['item_id', 'payment_method']);
-
+$auth = requireAuth('student');
 $studentId = (int)$auth['id'];
+
+$input = requireParams(['item_id']);
+
 $itemId = (int)$input['item_id'];
-$paymentMethod = trim($input['payment_method']);
-$notes = isset($input['notes']) ? trim($input['notes']) : null;
+$paymentMethod = isset($input['payment_method']) ? trim($input['payment_method']) : null;
 
 if ($itemId <= 0) {
     respond('error', 'Invalid item ID');
 }
 
-$allowedPaymentMethods = ['wallet', 'cash', 'instapay', 'vodafone_cash', 'card'];
+$stmt = $conn->prepare("
+    SELECT id, title, price, is_free, is_published
+    FROM items
+    WHERE id = ?
+    LIMIT 1
+");
 
-if (!in_array($paymentMethod, $allowedPaymentMethods)) {
-    respond('error', 'Invalid payment method');
+$stmt->bind_param("i", $itemId);
+$stmt->execute();
+$item = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+
+if (!$item) {
+    respond('error', 'Item not found');
 }
 
-function grantItemAccess($studentId, $itemId) {
-    global $conn;
+if ((int)$item['is_published'] !== 1) {
+    respond('error', 'Item is not available');
+}
 
-    $itemsToGrant = [$itemId];
+if (studentHasDirectAccess($studentId, $itemId)) {
+    respond('error', 'You already have access to this item');
+}
 
-    $stmt = $conn->prepare("
-        SELECT grants_item_id
-        FROM item_access_map
-        WHERE item_id = ?
-    ");
+$isFree = ((int)$item['is_free'] === 1 || (float)$item['price'] <= 0);
+$price = (float)$item['price'];
 
-    if (!$stmt) {
-        throw new Exception('Failed to prepare item access map query');
+if ($isFree) {
+    try {
+        grantItemAccess($studentId, $itemId);
+
+        respond('success', [
+            'message' => 'Free item unlocked successfully',
+            'item_id' => $itemId,
+            'is_free' => 1
+        ]);
+    } catch (Exception $e) {
+        respond('error', $e->getMessage());
     }
+}
 
-    $stmt->bind_param("i", $itemId);
-    $stmt->execute();
-    $result = $stmt->get_result();
 
-    while ($row = $result->fetch_assoc()) {
-        $itemsToGrant[] = (int)$row['grants_item_id'];
-    }
-
-    $stmt->close();
-
-    $itemsToGrant = array_unique($itemsToGrant);
-
-    foreach ($itemsToGrant as $grantItemId) {
-        $stmt = $conn->prepare("
-            SELECT id, access_type, duration_days
-            FROM items
-            WHERE id = ?
-            LIMIT 1
-        ");
-
-        if (!$stmt) {
-            throw new Exception('Failed to prepare granted item query');
-        }
-
-        $stmt->bind_param("i", $grantItemId);
-        $stmt->execute();
-        $itemResult = $stmt->get_result();
-
-        if ($itemResult->num_rows === 0) {
-            $stmt->close();
-            continue;
-        }
-
-        $item = $itemResult->fetch_assoc();
-        $stmt->close();
-
-        $endDate = null;
-
-        if ($item['access_type'] === 'limited') {
-            $durationDays = (int)$item['duration_days'];
-
-            if ($durationDays <= 0) {
-                throw new Exception('Limited item must have duration_days');
-            }
-
-            $endDate = date('Y-m-d H:i:s', strtotime("+$durationDays days"));
-        }
-
-        $stmt = $conn->prepare("
-            INSERT INTO student_access
-            (student_id, item_id, start_date, end_date, status)
-            VALUES (?, ?, NOW(), ?, 'active')
-            ON DUPLICATE KEY UPDATE
-                start_date = VALUES(start_date),
-                end_date = VALUES(end_date),
-                status = 'active'
-        ");
-
-        if (!$stmt) {
-            throw new Exception('Failed to prepare student access query');
-        }
-
-        $stmt->bind_param("iis", $studentId, $grantItemId, $endDate);
-        $stmt->execute();
-        $stmt->close();
-    }
+if (!$paymentMethod) {
+    respond('error', 'Payment method is required for paid items');
 }
 
 $conn->begin_transaction();
 
 try {
     $stmt = $conn->prepare("
-        SELECT id, title, price, access_type, duration_days
-        FROM items
+        SELECT wallet_balance
+        FROM students
         WHERE id = ?
+        AND status = 'active'
         LIMIT 1
         FOR UPDATE
     ");
 
-    if (!$stmt) {
-        throw new Exception('Failed to prepare item query');
-    }
-
-    $stmt->bind_param("i", $itemId);
+    $stmt->bind_param("i", $studentId);
     $stmt->execute();
-    $itemResult = $stmt->get_result();
-
-    if ($itemResult->num_rows === 0) {
-        $stmt->close();
-        throw new Exception('Item not found');
-    }
-
-    $item = $itemResult->fetch_assoc();
+    $student = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    $amount = (float)$item['price'];
-
-    if ($amount <= 0) {
-        throw new Exception('Invalid item price');
+    if (!$student) {
+        throw new Exception('Student not found or inactive');
     }
+
+    $walletBalance = (float)$student['wallet_balance'];
+
+    if ($walletBalance < $price) {
+        throw new Exception('Insufficient wallet balance');
+    }
+
+    $newBalance = $walletBalance - $price;
 
     $stmt = $conn->prepare("
-        SELECT id
-        FROM student_access
-        WHERE student_id = ?
-        AND item_id = ?
-        AND status = 'active'
-        AND (end_date IS NULL OR end_date >= NOW())
-        LIMIT 1
+        UPDATE students
+        SET wallet_balance = ?
+        WHERE id = ?
     ");
 
-    if (!$stmt) {
-        throw new Exception('Failed to prepare access check query');
-    }
-
-    $stmt->bind_param("ii", $studentId, $itemId);
+    $stmt->bind_param("di", $newBalance, $studentId);
     $stmt->execute();
-    $accessResult = $stmt->get_result();
-
-    if ($accessResult->num_rows > 0) {
-        $stmt->close();
-        throw new Exception('You already have access to this item');
-    }
-
     $stmt->close();
 
     $paymentType = 'direct_item_purchase';
-
-    if ($paymentMethod === 'wallet') {
-        $stmt = $conn->prepare("
-            SELECT wallet_balance
-            FROM students
-            WHERE id = ?
-            LIMIT 1
-            FOR UPDATE
-        ");
-
-        if (!$stmt) {
-            throw new Exception('Failed to prepare student wallet query');
-        }
-
-        $stmt->bind_param("i", $studentId);
-        $stmt->execute();
-        $studentResult = $stmt->get_result();
-
-        if ($studentResult->num_rows === 0) {
-            $stmt->close();
-            throw new Exception('Student not found');
-        }
-
-        $student = $studentResult->fetch_assoc();
-        $stmt->close();
-
-        $walletBalance = (float)$student['wallet_balance'];
-
-        if ($walletBalance < $amount) {
-            throw new Exception('Insufficient wallet balance');
-        }
-
-        $stmt = $conn->prepare("
-            UPDATE students
-            SET wallet_balance = wallet_balance - ?
-            WHERE id = ?
-            AND wallet_balance >= ?
-        ");
-
-        if (!$stmt) {
-            throw new Exception('Failed to prepare wallet deduction query');
-        }
-
-        $stmt->bind_param("did", $amount, $studentId, $amount);
-        $stmt->execute();
-
-        if ($stmt->affected_rows === 0) {
-            $stmt->close();
-            throw new Exception('Failed to deduct wallet balance');
-        }
-
-        $stmt->close();
-
-        $status = 'completed';
-    } else {
-        $status = 'pending';
-    }
-
-    $centerId = null;
-    $batchId = null;
+    $status = 'completed';
+    $notes = 'Student purchased item using wallet';
 
     $stmt = $conn->prepare("
-        INSERT INTO payments
-        (student_id, center_id, item_id, batch_id, payment_type, amount, payment_method, status, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO payments (
+            student_id,
+            item_id,
+            payment_type,
+            amount,
+            payment_method,
+            status,
+            notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
     ");
 
-    if (!$stmt) {
-        throw new Exception('Failed to prepare payment insert');
-    }
-
     $stmt->bind_param(
-        "iiiisdsss",
+        "iisdsss",
         $studentId,
-        $centerId,
         $itemId,
-        $batchId,
         $paymentType,
-        $amount,
+        $price,
         $paymentMethod,
         $status,
         $notes
@@ -252,29 +134,16 @@ try {
     $paymentId = $stmt->insert_id;
     $stmt->close();
 
-    if ($status === 'completed') {
-        grantItemAccess($studentId, $itemId);
-    }
-
-    logAction($auth['id'], 'student_direct_purchase', 'payments', $paymentId, json_encode([
-        'student_id' => $studentId,
-        'item_id' => $itemId,
-        'amount' => $amount,
-        'payment_method' => $paymentMethod,
-        'status' => $status
-    ]));
+    grantItemAccess($studentId, $itemId);
 
     $conn->commit();
 
     respond('success', [
-        'id' => $paymentId,
-        'message' => $status === 'completed'
-            ? 'Item purchased successfully'
-            : 'Payment request created successfully',
+        'message' => 'Item purchased successfully',
+        'payment_id' => $paymentId,
         'item_id' => $itemId,
-        'amount' => $amount,
-        'payment_method' => $paymentMethod,
-        'status' => $status
+        'amount' => $price,
+        'wallet_balance' => $newBalance
     ]);
 
 } catch (Exception $e) {

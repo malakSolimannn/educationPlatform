@@ -75,8 +75,20 @@ if (isset($input['password']) && $input['password'] !== '') {
 }
 
 if (isset($input['grade_id']) && $input['grade_id'] !== '') {
+    $gradeId = (int)$input['grade_id'];
+
+    $stmt = $conn->prepare("SELECT id FROM grades WHERE id = ?");
+    $stmt->bind_param("i", $gradeId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $stmt->close();
+
+    if ($result->num_rows === 0) {
+        respond('error', 'Invalid grade');
+    }
+
     $updates[] = 'grade_id = ?';
-    $params[] = (int)$input['grade_id'];
+    $params[] = $gradeId;
     $types .= 'i';
 }
 

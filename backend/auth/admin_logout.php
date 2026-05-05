@@ -3,7 +3,7 @@
 require_once '../config.php';
 
 validateRequestMethod('POST');
-$auth = requireAuth('admin');
+$auth = requireAuth(['admin', 'super_admin', 'assistant']);
 
 $token = getToken();
 

@@ -1,9 +1,9 @@
 <?php
 
-require_once '../config.php';
+require_once '../../config.php';
 
 validateRequestMethod('POST');
-$auth=requireAuth(['super_admin']);
+$auth=requireAuth(['super_admin', 'admin']);
 
 $input = requireParams(['id']);
 $id = (int)$input['id'];
@@ -19,5 +19,5 @@ if ($stmt->affected_rows === 0) {
 
 $stmt->close();
 
-logAction($auth['id'], 'delete_student_access', 'student', $current['student_id'], "Deleted student_access: $id");
+logAction($auth['id'], 'delete_student_access', 'student', "Deleted student_access: $id");
 respond('success', 'Access deleted successfully');
