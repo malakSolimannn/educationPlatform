@@ -75,7 +75,7 @@
 
     async function loadMyItems() {
       try {
-        const data = await apiGet('/student_access/get_my_items.php', true);
+        const data = await apiGet('/students/students_access/get_my_items.php', true);
         renderItems(Array.isArray(data) ? data : data.items || []);
       } catch (error) {
         statusEl.textContent = error.message || 'Failed to load items.';
